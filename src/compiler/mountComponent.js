@@ -21,7 +21,7 @@ export default function mountComponent(vm) {
 Vue.prototype._render = function () {
 
   // 给 render 函数绑定 this 上下文为 Vue 实例
-  return this.$options.render.apply(this)
+  // return this.$options.render.apply(this)
 }
 
 Vue.prototype._update = function (vnode) {

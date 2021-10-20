@@ -1,6 +1,6 @@
 import {initState, stateMixin} from "./instance/state.js";
 import mount from "../compiler/index.js";
-
+import patch  from "../compiler/patch.js"
 
 export default function Vue(options) {
   this._init(options)

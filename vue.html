@@ -18,7 +18,8 @@
           lang: {
             name: 'vue',
             version: '2.x'
-          }
+          },
+          frame: ['Vue', 'React', 'Angular']
         }
       }
     })
@@ -27,6 +28,14 @@
     })
     window.vm = vm
     console.log(vm)
+
+    vm.$watch('frame', function (newVal, oldVal) {
+      console.log('$watch newVal: ', newVal, 'oldVal: ', oldVal)
+    })
+
+    setTimeout(() => {
+      vm.frame.push('jQuery')
+    }, 5000)
   </script>
 </body>
 </html>

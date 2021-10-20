@@ -1,5 +1,5 @@
 import Dep from './dep.js'
-
+import protoArgument from './array.js'
 /**
  * 能过 Observer 类为对象设置响应式能力
  * @param data
@@ -61,9 +61,9 @@ export class Observer {
 
     // 处理数组
     if (Array.isArray(value)) {
-
+      protoArgument(value)
       // 对数组元素进行响应式功能
-      // this.observeArray(value)
+      this.observeArray(value)
     } else {
 
       // 对象响应式
