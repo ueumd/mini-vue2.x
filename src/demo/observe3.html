@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<script>
+  const data = {
+    a: {
+      b: 1
+    }
+  }
+
+  function walk(data) {
+    for (let key in data) {
+      const dep = []
+      let val = data[key]
+
+      // 如果 val 是对象，递归调用 walk 函数将其转为访问器属性
+      const nativeString = Object.prototype.toString.call(val)
+      if (nativeString === '[object Object]') {
+        walk(val)
+      }
+
+
+      Object.defineProperty(data, key, {
+        set(newVal) {
+          if (newVal === val) return
+          val = newVal
+          dep.forEach(fn => fn())
+        },
+        get() {
+          dep.push(Target)
+          return val
+        }
+      })
+    }
+  }
+
+  function $watch (exp, fn) {
+    Target = fn
+
+    // data['a']['b']
+    /**
+     * exp = 'a.b'
+     * data['a.b'] 是没法访问的
+     */
+
+    let pathArr
+    let obj = data
+
+    if (/\./.test(exp)) {
+      // 将字符串转为数组，例：'a.b' => ['a', 'b']
+      pathArr = exp.split('.')
+
+      // 使用循环读取到 data.a.b
+      pathArr.forEach(key => {
+        // obj = data[a]
+        // obj = obj[b]
+
+        // 读取字段值，触发 get 函数
+        obj = obj[key]
+      })
+
+      return
+    }
+
+    // 读取字段值，触发 get 函数
+    data[exp]
+  }
+
+  walk(data)
+
+  $watch('a.b', () => {
+    console.log('修改了字段 a.b')
+  })
+</script>
+</body>
+</html>

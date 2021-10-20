@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<div id="app">
+  <div>{{ msg }}</div>
+</div>
+<script type="module">
+  import Vue from './src/core/index.js'
+  let vm = new Vue({
+    el: '#app',
+    data() {
+      return {
+        a: 1,
+        msg: 'Hello, World!',
+        lang: {
+          name: 'vue',
+          version: '2.x'
+        }
+      }
+    },
+    watch: {
+      'a': function (newVal, oldVal) {
+        console.log('watch newVal: ', newVal, 'oldVal: ', oldVal)
+      }
+    }
+  })
+
+  vm.$watch('a', function (newVal, oldVal) {
+    console.log('$watch newVal: ', newVal, 'oldVal: ', oldVal)
+  })
+
+  vm.$watch('lang.name', function (newVal, oldVal) {
+    console.log('$watch newVal: ', newVal, 'oldVal: ', oldVal)
+  })
+
+  window.vm = vm
+  console.log(vm)
+</script>
+</body>
+</html>

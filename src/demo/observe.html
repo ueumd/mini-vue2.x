@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<script>
+  const data = {
+    a: 1,
+    b: 1
+  }
+
+  const dep = []
+
+  // Target 是全局变量
+  let Target = null
+
+  function $watch (exp, fn) {
+    // 将 Target 的值设置为 fn
+    Target = fn
+
+    // 读取字段值，触发 get 函数
+    data[exp]
+  }
+
+  function observe() {
+    for (let key in data) {
+      let val = data[key]
+      Object.defineProperty(data, 'a', {
+        set(newVal) {
+          if (newVal === val) return
+          val = newVal
+          dep.forEach(fn => fn())
+        },
+        get() {
+          dep.push(Target)
+          return val
+        }
+      })
+    }
+  }
+
+  observe()
+
+  $watch('a', () => {
+    console.log('第一个依赖')
+  })
+
+  $watch('a', () => {
+    console.log('第二个依赖')
+  })
+
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.11/vue.js"></script>
+</head>
+<body>
+  <div id="app">
+    {{ msg }}
+  </div>
+  <script>
+    const vm = new Vue({
+      el: '#app',
+      data() {
+        return {
+          msg: 'Hello, world!',
+          lang: {
+            name: 'vue',
+            version: '2.x'
+          }
+        }
+      }
+    })
+    vm.$watch('msg', function (newVal, oldVal) {
+      console.log(newVal, oldVal)
+    })
+    window.vm = vm
+    console.log(vm)
+  </script>
+</body>
+</html>

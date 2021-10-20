@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<script>
+  const data = {
+    name: 'vue',
+    age: 5
+  }
+
+  function walk(data) {
+    for (let key in data) {
+      const dep = []
+      let val = data[key]
+
+      // 如果 val 是对象，递归调用 walk 函数将其转为访问器属性
+      const nativeString = Object.prototype.toString.call(val)
+      if (nativeString === '[object Object]') {
+        walk(val)
+      }
+
+
+      Object.defineProperty(data, key, {
+        set(newVal) {
+          if (newVal === val) return
+          val = newVal
+          dep.forEach(fn => fn())
+        },
+        get() {
+          dep.push(Target)
+          return val
+        }
+      })
+    }
+  }
+
+  function $watch (exp, fn) {
+    Target = fn
+
+    // data['a']['b']
+    /**
+     * exp = 'a.b'
+     * data['a.b'] 是没法访问的
+     */
+
+    let pathArr
+    let obj = data
+
+    if (typeof exp === 'function') {
+      exp()
+      return
+    }
+
+    if (/\./.test(exp)) {
+      // 将字符串转为数组，例：'a.b' => ['a', 'b']
+      pathArr = exp.split('.')
+
+      // 使用循环读取到 data.a.b
+      pathArr.forEach(key => {
+        // obj = data[a]
+        // obj = obj[b]
+
+        // 读取字段值，触发 get 函数
+        obj = obj[key]
+      })
+
+      return
+    }
+
+    // 读取字段值，触发 get 函数
+    data[exp]
+  }
+
+  walk(data)
+
+  // $watch('a.b', () => {
+  //   console.log('修改了字段 a.b')
+  // })
+
+  function render () {
+    // 读取字段值data.name，触发 get 函数
+    return document.write(`姓名：${data.name}; 年龄：${data.age}`)
+  }
+
+  /**
+   * 第二个参数依然是 render 函数，也就是说当依赖发生变化时，会重新执行 render 函数，这样我们就实现了数据变化，并将变化自动应用到 DOM。
+   * 其实这大概就是 Vue 的原理，但我们做的还远远不够，比如上面这句代码，
+   * 第一个参数中 render 函数的执行使得我们能够收集依赖，当依赖变化时会重新执行第二个参数中的 render 函数，
+   * 但不要忘了这又会触发一次数据字段的 get 拦截器，所以此时已经收集了两遍重复的依赖，那么我们是不是要想办法避免收集冗余的依赖呢？
+   * 除此之外我们也没有对数组做处理，我们将这些问题留到后面，看看在 Vue 中它是如何处理的。
+   */
+  $watch(render, render)
+</script>
+</body>
+</html>
