@@ -1,5 +1,6 @@
 import mountComponent from "./mountComponent.js";
 import parse from './parse.js'
+import generate from './generate.js'
 export default function mount(vm) {
   if (!vm.$options.render) {
     let template = ''
@@ -9,19 +10,23 @@ export default function mount(vm) {
       // 模版存在
       template = vm.$options.template
     } else if (vm.$options.el) {
-
       template = document.querySelector(vm.$options.el).outerHTML
 
       vm.$el = document.querySelector(vm.$options.el)
 
-      // 生成 render 函数
+      /**
+       * 解析模版 生成render函数
+       * @type {渲染函数}
+       */
       const render = compileToFunction(template)
 
       vm.$options.render = render
+      console.log(render)
     }
   }
 
-  mountComponent(vm)
+  // 一些挂载
+  // mountComponent(vm)
 }
 
 
@@ -34,7 +39,11 @@ export default function mount(vm) {
 export function compileToFunction(template) {
   // 解析模版，生成 ast
   const ast = parse(template)
+  console.log(ast)
   // 将 ast 生成渲染函数
-  // const render = generate(ast)
-  // return render
+  const code = generate(ast)
+  console.log(code)
+  const render = new Function(`with(this){return ${code}}`)
+  console.log('render: ', render)
+  return render
 }

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="template">
+  模板结构
+  <ul>
+    <li>1</li>
+    <li>2</li>
+    <li>3</li>
+    <li>4</li>
+    <li>5</li>
+  </ul>
+</div>
+<script>
+  class CreateElement {
+    constructor(tagName, props, children) {
+      // 当只有两个参数tagName和children的时候，例如 celement(el, [123]) 做容错处理
+      if (Array.isArray(props)) {
+        children = props
+        props = {}
+      }
+      // tagName, props, children数据保存到this实例化对象上
+      this.tagName = tagName
+      this.props = props || {}
+      this.children = children || []
+      this.key = props ? props.key : undefined // 对于Vue的v-for，react的map循环，加key可以提高diff效率
+
+      // 定义count在diff算法使用
+      let count = 0
+      this.children.forEach(child => {
+        if (child instanceof CreateElement) {
+          count += child.count
+        } else {
+          child = '' + child
+        }
+        count++
+      })
+      // 给每一个节点设置一个count
+      this.count = count
+    }
+
+    render() {
+      // 创建dom
+      const el = document.createElement(this.tagName)
+      const props = this.props
+      // 循环所有属性，然后设置属性
+      for (let [key, val] of Object.entries(props)) {
+        el.setAttribute(key, val)
+      }
+      this.children.forEach(child => {
+        // 递归循环 构建dom tree,递归的终止条件：子节点为文本节点
+        let childEl = (child instanceof CreateElement) ? child.render() : document.createTextNode(child)
+        el.appendChild(childEl)
+      })
+      return el
+    }
+  }
+
+  const h = (tagName, props, children) => {
+    return new CreateElement(tagName, props, children)
+  }
+
+  // 将dom树节点劫持到对象中中进行解析
+  function nodeToObject(vnode) {
+    let parseProps = {}
+    // 定义一个parseProps接收节点属性
+    for (let [key, val] of Object.entries(vnode.attributes)) {
+      parseProps[val.name] = val.value
+    }
+    let dealChildren = []
+    // 定义一个数组接收节点的所有子节点，对于元素则递归调用nodeToObject方法
+    let parsrChildren = Array.from(vnode.childNodes)
+    parsrChildren.forEach((ele) => {
+      if (ele instanceof Element) {
+        dealChildren.push(nodeToObject(ele))
+      } else {
+        dealChildren.push(ele.nodeValue)
+      }
+    })
+    let flag = {
+      tag: vnode.tagName.toLowerCase(),
+      props: parseProps,
+      children: dealChildren
+    }
+
+    // 返回一个虚拟Dom Tree
+    return h(flag.tag, flag.props, flag.children)
+  }
+
+
+
+  // 将虚拟DMO渲染到浏览器
+  const VNode = h('ul',
+      {
+        id: 'ol-list'
+      },
+      [
+        h('li', { class: 'item1', style: "list-style: none" }, ['Item1']),
+        h('li', { class: 'item2', id: 'li2', style: "color: pink", onclick: 'printStr ()' }, ['Item2']),
+        h('li', { class: 'item3', onclick: 'alert(1234)' }, ['Item3'])
+      ]
+  ).render()
+  document.querySelector('#app').appendChild(VNode)
+
+  function printStr() {
+    console.log(h)
+  }
+
+  // 将DOM转换虚拟DOM再渲染到浏览器
+  let AST = nodeToObject(document.querySelector('#template')).render();
+  document.querySelector('#app').appendChild(AST);
+
+</script>
+</body>
+</html>
