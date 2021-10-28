@@ -18,21 +18,25 @@ export default function mountComponent(vm) {
   }, true)
 }
 
+/**
+ * 负责执行 vm.$options.render 函数
+ */
 Vue.prototype._render = function () {
 
   // 给 render 函数绑定 this 上下文为 Vue 实例
-  // return this.$options.render.apply(this)
+  return this.$options.render.apply(this)
 }
 
 Vue.prototype._update = function (vnode) {
-  const oldVNode = this._vnode
-
+  // 老的 VNode
+  const prevVNode = this._vnode
+  // 新的 VNode
   this._vnode = vnode
-  if(!oldVNode) {
-    // 老的 VNode 不存在，首次渲染根组件
+  if (!prevVNode) {
+    // 老的 VNode 不存在，则说明时首次渲染根组件
     this.$el = this.__patch__(this.$el, vnode)
   } else {
-    // 后续更新组件或者首次渲染子组件
-    this.$el = this.__patch__(oldVNode, vnode)
+    // 后续更新组件或者首次渲染子组件，都会走这里
+    this.$el = this.__patch__(prevVNode, vnode)
   }
 }

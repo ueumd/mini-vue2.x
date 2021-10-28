@@ -1,6 +1,7 @@
 import mountComponent from "./mountComponent.js";
-import parse from './parse.js'
+import parse1 from './parse.js'
 import generate from './generate.js'
+
 export default function mount(vm) {
   if (!vm.$options.render) {
     let template = ''
@@ -26,7 +27,7 @@ export default function mount(vm) {
   }
 
   // 一些挂载
-  // mountComponent(vm)
+  mountComponent(vm)
 }
 
 
@@ -38,12 +39,9 @@ export default function mount(vm) {
  */
 export function compileToFunction(template) {
   // 解析模版，生成 ast
-  const ast = parse(template)
+  const ast = parse1(template)
   console.log(ast)
   // 将 ast 生成渲染函数
-  const code = generate(ast)
-  console.log(code)
-  const render = new Function(`with(this){return ${code}}`)
-  console.log('render: ', render)
+  const render = generate(ast)
   return render
 }

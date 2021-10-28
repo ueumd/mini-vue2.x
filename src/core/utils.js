@@ -16,6 +16,11 @@ export function proxy (target, sourceKey, key) {
   })
 }
 
+export function isUnaryTag(tagName) {
+  const unaryTag = ['input']
+  return unaryTag.includes(tagName)
+}
+
 
 export function remove (arr, item) {
   if (arr.length) {

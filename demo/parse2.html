@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<div id="app">
+  <h1>hello</h1>
+</div>
+<script>
+  // https://github.com/z3718l/vue-source-code/blob/master/src/compiler/index.js
+  // Regular Expressions for parsing tags and attributes
+
+  // 匹配标签属性 id="app" id='app' id=app
+  const attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/
+
+  // 标签名  <my-header></my-header>
+  const ncname = `[a-zA-Z_][\\-\\.0-9_a-zA-Z${unicodeRegExp.source}]*`
+
+  // <my:header></my:header>
+  const qnameCapture = `((?:${ncname}\\:)?${ncname})`
+
+  // 开始标签 </div
+  const startTagOpen = new RegExp(`^<${qnameCapture}`)
+
+  // 开始标签结束部分 > />
+  const startTagClose = /^\s*(\/?)>/
+
+  // 结束标签 </div>
+  const endTag = new RegExp(`^<\\/${qnameCapture}[^>]*>`)
+
+  const comment = /^<!\--/
+
+  const defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g
+
+  function parse(template) {
+    let root
+    let currentParent
+    let stack = []
+
+    parseHtml(template, {
+      // unary 单标签
+      start: (tag, attrs, unary) => {
+        let element = {
+          type: 1,
+          tag,
+          attrsList: attrs,
+          parent: currentParent,
+          children: []
+        }
+
+        // 第一次确认根节点
+        if (root) {
+          root = element
+        }
+
+        if (currentParent) {
+          currentParent.children.push(element)
+          element.parent = currentParent
+        }
+      },
+
+      // 结束标签回调
+      end: () => {
+        // 删除数组最后一个元素
+        stack.length -= 1
+
+        // 设置当前的父级元素
+        currentParent = stack[stack.length - 1]
+      },
+
+      // 判断是否为文本
+      chars: (text) => {
+        if (!currentParent) {
+          return
+        }
+        const children = currentParent.children
+        let expression = ''
+        if (text.trim()) {
+          children.push({
+            type: 2,
+            text,
+            expression
+          })
+        }
+      }
+    })
+
+    return root
+  }
+
+  function parseHTML(template, options) {
+    console.log(template)
+    // 用于临时找到的开始签和属性
+    // 当找到了对应的结束标签的时候，则主彰html格式正确
+    // 当没找到对应的结束标签，则报错
+
+    let checkStack = []
+
+    // 模版字符串转存，便于分析
+    let html = template
+
+    // 当前已分析到字符串索引位置
+    let index = 0
+
+    while (html) {
+      const textStart = html.indexOf('<')
+      if (textStart === 0) {
+        // 优先判断是否为注释
+        if (html.match(comment)) {
+          const commentEnd = html.indexOf('-->')
+          if (commentEnd >= 0) {
+            console.log('comment')
+          }
+          advance(commentEnd + 3)
+          continue
+        }
+
+        // 判断是否为开始标签
+        const startTagMatch = parseStartTag()
+        if (startTagMatch) {
+          console.log(startTagMatch)
+          handleStartTag(startTagMatch)
+        }
+
+        // 判断结束标签
+        const endTagMatch = html.match(endTag)
+        if (endTagMatch) {
+          parseEndTag(endTag)
+          advance(endTagMatch[0].length)
+        }
+      }
+
+      let text
+      // 当 < 的位位置大于等于0 说明前面可能文本
+      if (textStart >= 0) {
+        text = html.slice(0, textStart)
+        advance(textStart)
+      }
+
+      // 说明是纯文本
+      if (textStart < 0) {
+        text = html
+        html = ''
+      }
+
+      // 处理纯文本
+      if (options.chars) {
+        options.chars(text)
+      }
+
+      console.log(html)
+      // break;
+    }
+
+    /*
+    * 处理结束标签
+    * */
+
+    function parseEndTag(tagName) {
+      let pos, lowerCaseTagName
+      if (tagName) {
+        lowerCaseTagName = tagName.toLowerCase()
+
+        // 从数组的最后一个开始查找对应标签
+        for (pos = checkStack.length - 1; pos >= 0; pos--) {
+          if (checkStack[pos].lowerCaseTag === lowerCaseTagName) {
+            break
+          }
+        }
+      } else {
+        pos = 0
+      }
+
+      // 找到pos 测再检测checkStack中校验
+      // 是否为当前顶部标签的tag，不是警告，可能存在错误
+      // 然后再执行end
+      if (pos >= 0) {
+        for (let i = checkStack.length - 1; i >= pos; i--) {
+          if (i > pos || !tagName) {
+            console.warn(`tag <${checkStack[i].tag}> has no matching end tag.`)
+          }
+          options.end && options.end()
+          checkStack.length = pos
+        }
+      }
+    }
+
+    /**
+     * 开始标签处理
+     * */
+    function handleStartTag(match) {
+      let tagName = match.tagName
+      let unaryTag = match.isUnary
+      let attrs = []
+
+      attrs.length = match.attrs.length;
+
+      for (let i = 0; i < attrs.length; i++) {
+        attrs[i] = {
+          name: match.attrs[i][1],
+          value: match.attrs[i][3] || match.attrs[i][4] || match.attrs[i][5]
+        }
+      }
+
+      // 判断是否为单标签
+      let isUnary = isUnaryTag(tagName) || !unaryTag
+      if (!isUnary) {
+        // 如果不是
+        checkStack.push({
+          tag: tagName,
+          attrs,
+          lowerCaseTag: tagName.toLowerCase()
+        })
+      }
+
+      // 通过回调函数调用
+      if (options.start) {
+        options.start(tagName, attrs, isUnary)
+      }
+    }
+
+    /**
+     * 匹配开始标签
+     *
+     */
+    function parseStartTag() {
+      const start = html.match(startTagOpen)
+      console.log(start)
+      if (start) {
+        let match = {
+          tagName: start[1],
+          attrs: [],
+          start: index
+        }
+        advance(start[0].length)
+        let end, attr
+
+        // 匹配开始标签的结束符号，如果匹配成功， 则结束
+        // 如果没有匹配到， 则匹配属性
+        // 匹配属性， 如果匹配到，则把属性添加到match attrs中
+        while (!(end = html.match(startTagClose)) && (attr = html.match(attribute))) {
+          match.attrs.push(attr)
+          advance(attr[0].length)
+        }
+
+        console.log('match', match)
+        console.log('end', end)
+
+        // end 就是匹配到的 > or />
+        if (end) {
+
+          // 自闭标签
+          match.isUnary = end[1]
+          match.end = index
+          advance(end[0].length)
+          return match
+        }
+      }
+
+    }
+
+    function advance(n) {
+      index += n;
+      html = html.substring(n)
+    }
+
+    // 判断当前标签是否为单标签
+    function isUnaryTag(tagName) {
+      const isUnaryTag = 'area,base,br,col,embed,frame,hr,img,input,isindex,keygen,link,meta,param,source,track,wbr'
+      return isUnaryTag.split(',').indexOf(tagName) >= 0
+    }
+  }
+
+  const template = `<div id="app">
+  <h1>hello</h1>
+</div>`
+
+  console.log(parse(template))
+</script>
+</body>
+</html>

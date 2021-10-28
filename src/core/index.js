@@ -1,6 +1,7 @@
 import {initState, stateMixin} from "./instance/state.js";
 import mount from "../compiler/index.js";
 import patch  from "../compiler/patch.js"
+import renderHelper from "../compiler/renderHelper.js"
 
 export default function Vue(options) {
   this._init(options)
@@ -16,6 +17,9 @@ Vue.prototype._init = function (options) {
 
   // 初始化数据
   initState(this)
+
+  // 安装运行时的渲染工具函数
+  renderHelper(this)
 
   // DIFF
   this.__patch__ = patch

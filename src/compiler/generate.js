@@ -1,6 +1,7 @@
 export default function generate(ast) {
   // 渲染函数字符串形式
-  return genElement(ast)
+  const renderStr =  genElement(ast)
+  return new Function(`with(this) { return ${renderStr} }`)
 }
 /**
  * 解析 ast 生成 渲染函数
