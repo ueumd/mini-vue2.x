@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<script>
+  // //匹配视图中的{{指令}}
+  const defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g
+
+  // 正则的元字符  ^ $ . * + ? = ! : | \ / ( ) [ ] { }
+  const regexEscapeRE = /[-.*+?^${}()|[\]\/\\]/g
+
+  /* @flow */
+  const validDivisionCharRE = /[\w).+\-_$\]]/
+
+  function parseFilters (exp) {
+    let inSingle = false                     // exp是否在 '' 中
+    let inDouble = false                     // exp是否在 "" 中
+    let inTemplateString = false             // exp是否在 `` 中 es6模版字会串
+    let inRegex = false                      // exp是否在 \\ 中
+
+    let curly = 0                            // 在exp中发现一个 { 则curly加1，发现一个 } 则curly减1，直到culy为0 说明 { ... }闭合
+    let square = 0                           // 在exp中发现一个 [ 则curly加1，发现一个 ] 则curly减1，直到culy为0 说明 [ ... ]闭合
+    let paren = 0                            // 在exp中发现一个 ( 则curly加1，发现一个 ) 则curly减1，直到culy为0 说明 ( ... )闭合
+
+    let lastFilterIndex = 0
+    let c, prev, i, expression, filters
+
+    for (i = 0; i < exp.length; i++) {
+      // 保存上次循环的 c，初始为 undefined
+      prev = c
+
+      // 调用 charCodeAt 方法返回 Unicode 编码，课通过 String.fromCharCode() 反转
+      c = exp.charCodeAt(i)
+      if (inSingle) {
+        // 当前 c 是 ' ，并且 prev 不是 \ ，单引号部分结束
+        if (c === 0x27 && prev !== 0x5C) inSingle = false
+      } else if (inDouble) {
+        // 当前 c 是 " ，并且 prev 不是 \ ，双引号部分结束
+        if (c === 0x22 && prev !== 0x5C) inDouble = false
+      } else if (inTemplateString) {
+        // 当前 c 是 ` ，并且 prev 不是 \ ，es6 模板部分结束
+        if (c === 0x60 && prev !== 0x5C) inTemplateString = false
+      } else if (inRegex) {
+        // 当前在正则表达式中  /开始
+        //  / \
+        // 当前 c 是 / ，并且 prev 不是 \ ，正则部分结束
+        if (c === 0x2f && prev !== 0x5C) inRegex = false
+      } else if (
+        /**
+         *
+         * 如果在 之前不在 ' " ` / 即字符串 或者正则中
+         * 那么就判断 当前字符是否是 |
+         *  如果当前 字符为 |
+         * 且 不在 { } 对象中
+         * 且 不在 [] 数组中
+         * 且不在  () 中
+         * 那么说明此时是过滤器的一个 分界点
+         * */
+        c === 0x7C && // pipe  | 为管道符
+        exp.charCodeAt(i + 1) !== 0x7C &&
+        exp.charCodeAt(i - 1) !== 0x7C &&  // {} [] () 都没有结束
+        !curly && !square && !paren        // {} [] () 都没有结束
+      ) {
+
+        /*
+         如果前面没有表达式那么说明这是第一个 管道符号 "|"
+         再次遇到 | 因为前面 expression = 'message '
+         执行  pushFilter()
+         */
+        if (expression === undefined) {
+          // first filter, end of expression
+          // 第一次解析 filter，提取 | 前面部分 expression
+          lastFilterIndex = i + 1
+          expression = exp.slice(0, i).trim()
+        } else {
+          pushFilter()
+        }
+      } else {
+        switch (c) {
+          case 0x22: inDouble = true; break         // "
+          case 0x27: inSingle = true; break         // '
+          case 0x60: inTemplateString = true; break // `
+          case 0x28: paren++; break                 // (
+          case 0x29: paren--; break                 // )
+          case 0x5B: square++; break                // [
+          case 0x5D: square--; break                // ]
+          case 0x7B: curly++; break                 // {
+          case 0x7D: curly--; break                 // }
+        }
+        if (c === 0x2f) { // /
+          let j = i - 1
+          let p
+          // find first non-whitespace prev char
+          // 找到第一个不是空字符串的 p，中断循环
+          for (; j >= 0; j--) {
+            p = exp.charAt(j)
+            if (p !== ' ') break
+          }
+
+          // var validDivisionCharRE = /[\w).+\-_$\]]/;
+          // p 不为空，并且不是字母 数组 + - _ $ ] 之一，说明是正则
+          if (!p || !validDivisionCharRE.test(p)) {
+            inRegex = true
+          }
+        }
+      }
+    }
+
+    if (expression === undefined) {
+      expression = exp.slice(0, i).trim()
+    } else if (lastFilterIndex !== 0) {
+      pushFilter()
+    }
+
+    function pushFilter () {
+      // 将 exp.slice(lastFilterIndex, i).trim()，也就是 filter name 插入 filters 数组
+      (filters || (filters = [])).push(exp.slice(lastFilterIndex, i).trim())
+      lastFilterIndex = i + 1
+    }
+
+    if (filters) {
+      // 遍历 filters 数组，循环处理 expression
+      for (i = 0; i < filters.length; i++) {
+        expression = wrapFilter(expression, filters[i])
+      }
+    }
+
+    return expression
+  }
+
+  console.log(parseFilters(' ab | c | d'))
+
+
+  /*
+   生成过滤器的 表达式字符串
+   如上面的
+   exp = message
+   filters = ['filterA','filterB(arg1,arg2)']
+   第一步  以exp 为入参 生成 filterA 的过滤器表达式字符串  _f("filterA")(message)
+   第二步 以第一步字符串作为入参 生成第二个过滤器的表达式字符串 _f("filterB")(_f("filterA")(message),arg1,arg2)
+   => _f("filterB")(_f("filterA")(message),arg1,arg2)
+   * @param {string} exp   上一个过滤器的值 没有就是 表达式的值
+   * @param {string} filter
+   * @returns {string}
+   */
+  //    console.log(wrapFilter('abc','defg(hijk)')) //结果 _f("defg")(abc,hijk)
+  function wrapFilter (exp, filter) {
+    //返回字符串第一次出现索引的位置
+    const i = filter.indexOf('(')
+    if (i < 0) {
+      // _f: resolveFilter
+      return `_f("${filter}")(${exp})`
+    } else {
+      //name 是 从字符串开始到(结束的字符串,不包含(
+      //截取字符串 arrayObject.slice(start,end)
+      const name = filter.slice(0, i)
+
+      //args是从(开始匹配，到字符串末端，不包含(
+      //如果 end 未被规定，那么 slice() 方法会选取从 start 到数组结尾的所有元素。
+      const args = filter.slice(i + 1)
+      return `_f("${name}")(${exp}${args !== ')' ? ',' + args : args}`
+    }
+  }
+
+
+
+  // done: 创建一个纯函数的缓存
+  function cached(fn) {
+    const cache = Object.create(null);
+    return function cachedFn(str) {
+      const hit = cache[str];
+      return hit || (cache[str] = fn(str));
+    };
+  }
+
+  /**
+   * 创建用户自定义模板符号, 比如传入 [  "[[", "]]" ], 模板就可以写成 [[abc.reverse()]]
+   * @type {function(*=): *}
+   */
+  const buildRegex = cached(delimiters => {
+    //$&	与 regexp 相匹配的子串。 这里的意思是遇到了特殊符号的时候在正则里面需要替换加多一个/斜杠
+    const open = delimiters[0].replace(regexEscapeRE, '\\$&')
+    const close = delimiters[1].replace(regexEscapeRE, '\\$&')
+
+    // 匹配开始的open +任意字符或者换行符+ close 全局匹配
+    return new RegExp(open + '((?:.|\\n)+?)' + close, 'g')
+  })
+
+
+  /**
+   * @param text
+   * @param delimiters
+   * @returns {{expression: string, tokens: []}}
+   */
+  function parseText(text, delimiters) {
+    // 如果delimiters不存在则 用默认指令 {{}}，如果修改成其他指令则用其他指令
+    const tagRE = delimiters ? buildRegex(delimiters) : defaultTagRE
+
+    //匹配是否有表达式,比如:{{message}}  如果没有，则表示是纯文本节点,则直接返回不做处理
+    if (!tagRE.test(text)) {
+      return
+    }
+    const tokens = []
+    const rawTokens = []
+    let lastIndex = tagRE.lastIndex = 0
+    let match, index, tokenValue
+
+    // 循环执行多次匹配 match[1]是匹配的第一个子表达式
+    // "{{ message | capitalize | size }} {{ aaa | bbb | ccc }}"
+    // 第一次match: index:0 match[0]: "{{ message | capitalize | size }}" match[1]: " message | capitalize | size "
+    // 第二次match: index: 34 match[0]: "{{ aaa | bbb | ccc }}" match[1]: " aaa | bbb | ccc "
+    //用正则tagRE去匹配text,此时match就是text里的每个值，对于:{{item}}:{{index}}来说,match等于Array["{{item}}","item"] 、 Array["{{index}}","index"]
+    while ((match = tagRE.exec(text))) {
+      // 匹配成功的位置
+      index = match.index
+      // push text token
+      // 存储文本标记
+      // "123 {{ message | capitalize | size }}" tokenValue就是123
+
+      //如果index大于lastIndex，表明中间还有一段文本，比如:{{item}}:{{index}}，中间的:就是文本
+      if (index > lastIndex) {
+        // "123 {{ message | capitalize | size }}" tokenValue就是123
+        // {{ message | capitalize | size }}
+        rawTokens.push(tokenValue = text.slice(lastIndex, index))
+        tokens.push(JSON.stringify(tokenValue))
+      }
+      // tag token
+      // 过滤器表达式
+      //调用parseFilters对match[1做解析]   ;例如{{no | add(100) }}，解析后的格式为:_f("add")(no,100)
+
+      // 取出'{{ }}'中间的变量exp
+      const exp = parseFilters(match[1].trim())
+      tokens.push(`_s(${exp})`)
+      rawTokens.push({'@binding': exp})
+
+      //设置下一次开始匹配的位置
+      lastIndex = index + match[0].length
+    }
+
+    // 匹配结束后, 剩余的text内容
+    if (lastIndex < text.length) {
+      rawTokens.push(tokenValue = text.slice(lastIndex))
+      tokens.push(JSON.stringify(tokenValue))
+    }
+    return {
+      // {{ message | capitalize | size }} + {{ aaa | bbb | ccc }}
+      //拼凑成一个 表达式，例如:"_s(item)+":"+_s(index)"
+      expression: tokens.join('+'),
+      //模板信息，例如[{@binding: "item"},":",{@binding: "index"}]
+      tokens: rawTokens
+    }
+  }
+
+  var template = 'hello, {{name}}';
+  var tokens = parseText(template, undefined);
+  console.log(tokens)
+</script>
+</body>
+</html>
