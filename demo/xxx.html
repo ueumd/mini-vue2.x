@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<script>
+  var unicodeRegExp = /a-zA-Z\u00B7\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u037D\u037F-\u1FFF\u200C-\u200D\u203F-\u2040\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD/;
+  // Regular Expressions for parsing tags and attributes
+  var attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/;
+  var dynamicArgAttribute = /^\s*((?:v-[\w-]+:|@|:|#)\[[^=]+?\][^\s"'<>\/=]*)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/;
+  var ncname = "[a-zA-Z_][\\-\\.0-9_a-zA-Z" + (unicodeRegExp.source) + "]*";
+  var qnameCapture = "((?:" + ncname + "\\:)?" + ncname + ")";
+  var startTagOpen = new RegExp(("^<" + qnameCapture));
+  var startTagClose = /^\s*(\/?)>/;
+  var endTag = new RegExp(("^<\\/" + qnameCapture + "[^>]*>"));
+  var doctype = /^<!DOCTYPE [^>]+>/i;
+  // #7298: escape - to avoid being passed as HTML comment when inlined in page
+  var reCache = {};
+  var comment = /^<!\--/;
+  var conditionalComment = /^<!\[/;
+
+  var isPlainTextElement = makeMap('script,style,textarea', true);
+
+  function makeMap (
+    str,
+    expectsLowerCase
+  ) {
+    var map = Object.create(null);
+    var list = str.split(',');
+    for (var i = 0; i < list.length; i++) {
+      map[list[i]] = true;
+    }
+    return expectsLowerCase
+      ? function (val) { return map[val.toLowerCase()]; }
+      : function (val) { return map[val]; }
+  }
+
+  var no = function (a, b, c) { return false; };
+
+  function parseHTML(html, options) {
+    var stack = [];
+    var expectHTML = options.expectHTML;
+    var isUnaryTag$$1 = options.isUnaryTag || no;
+    var canBeLeftOpenTag$$1 = options.canBeLeftOpenTag || no;
+    var index = 0;
+    var last, lastTag;
+    while (html) {
+      last = html;
+      // 确保不是 script 或者 style 者 textarea 标签
+      var textEnd = html.indexOf('<');
+      if (textEnd === 0) {
+        // End tag:
+        var endTagMatch = html.match(endTag);
+        if (endTagMatch) {
+          var curIndex = index;
+          advance(endTagMatch[0].length);
+          parseEndTag(endTagMatch[1], curIndex, index);
+          continue
+        }
+
+        // Start tag:
+        var startTagMatch = parseStartTag();
+        if (startTagMatch) {
+          handleStartTag(startTagMatch);
+          continue
+        }
+      }
+      var text = (void 0), rest = (void 0), next = (void 0);
+      if (textEnd >= 0) {
+        // rest = html.slice(textEnd);
+        // while (
+        //   !endTag.test(rest) &&
+        //   !startTagOpen.test(rest)
+        // ) {
+        //   // 把标签里面的文字提取出来 hello</div> 提取 hello
+        //   next = rest.indexOf('<', 1);
+        //   if (next < 0) { break }
+        //   textEnd += next;
+        //   rest = html.slice(textEnd);
+        // }
+        text = html.substring(0, textEnd);
+      }
+
+      if (textEnd < 0) {
+        text = html;
+      }
+      if (text) {
+        advance(text.length);
+      }
+
+      if (options.chars && text) {
+        options.chars(text, index - text.length, index);
+      }
+    }
+
+    // Clean up any remaining tags
+    parseEndTag();
+
+    function advance(n) {
+      index += n;
+      html = html.substring(n);
+    }
+
+    function parseStartTag() {
+      var start = html.match(startTagOpen);
+      // [ '<div', 'div', index: 0, input: '<div id="1" bg="2">hello</div>', groups: undefined ]
+      if (start) {
+        var match = {
+          tagName: start[1],
+          attrs: [],
+          start: index
+        };
+        advance(start[0].length); // 去除 <div，剩下 id="1" bg="2">hello</div>
+        var end, attr;
+        // 把属性都存储起来 id="1" bg="2" 去除属性之后剩下 >hello</div>
+        while (!(end = html.match(startTagClose)) && (attr = html.match(dynamicArgAttribute) || html.match(attribute))) {
+          attr.start = index;
+          advance(attr[0].length);
+          attr.end = index;
+          match.attrs.push(attr);
+        }
+        if (end) {
+          match.unarySlash = end[1];
+          advance(end[0].length); // 把>或者/>去除剩下 hello</div>
+          match.end = index;
+          return match
+        }
+      }
+    }
+
+    function handleStartTag(match) {
+      var tagName = match.tagName;
+      var unarySlash = match.unarySlash; // 自闭合标签为/ 双标签为‘’空
+
+      var unary = !!unarySlash;
+
+      var l = match.attrs.length;
+      var attrs = new Array(l);
+      for (var i = 0; i < l; i++) {
+        var args = match.attrs[i];
+        var value = args[3] || args[4] || args[5] || '';
+        attrs[i] = {
+          name: args[1],
+          value: value
+        };
+        // 按照{ name,value } 的形式保存起来，{id:1}
+        if (options.outputSourceRange) {
+          attrs[i].start = args.start + args[0].match(/^\s*/).length;
+          attrs[i].end = args.end;
+        }
+      }
+      // 双标签
+      if (!unary) {
+        stack.push({ tag: tagName, lowerCasedTag: tagName.toLowerCase(), attrs: attrs, start: match.start, end: match.end });
+        lastTag = tagName;
+      }
+      if (options.start) {
+        options.start(tagName, attrs, unary, match.start, match.end);
+      }
+    }
+    // stackedTag, index - endTagLength, index
+    // stackedTag, index - endTagLength, index
+    function parseEndTag(tagName, start, end) {
+      var pos, lowerCasedTagName;
+      if (start == null) { start = index; }
+      if (end == null) { end = index; }
+
+      // Find the closest opened tag of the same type
+      if (tagName) {
+        lowerCasedTagName = tagName.toLowerCase();
+        for (pos = stack.length - 1; pos >= 0; pos--) {
+          if (stack[pos].lowerCasedTag === lowerCasedTagName) {
+            break
+          }
+        }
+      } else {
+        // If no tag name is provided, clean shop
+        pos = 0;
+      }
+      if (pos >= 0) {
+        // Close all the open elements, up the stack
+        for (var i = stack.length - 1; i >= pos; i--) {
+          if (options.end) {
+            options.end(stack[i].tag, start, end);
+          }
+        }
+        // Remove the open elements from the stack
+        stack.length = pos;
+        lastTag = pos && stack[pos - 1].tag;
+      }
+    }
+  }
+  var currentParent;
+  var stack = [];
+  var root;
+
+  function end(tag, start) {
+    var element = stack[stack.length - 1];
+    // pop stack 出栈
+    stack.length -= 1;
+    currentParent = stack[stack.length - 1];
+    closeElement(element);
+  }
+
+  function start(tag, attrs, unary, start, end) {
+    var element = createASTElement(tag, attrs, currentParent);
+    if (!root) {
+      root = element;
+    }
+    processFor(element);
+    if (!unary) {
+      currentParent = element;
+      // push stack 入栈
+      stack.push(element);
+    }
+  }
+
+  function chars(text, start, end) {
+    var children = currentParent.children;
+    if (text) {
+      var child;
+      child = {
+        type: 2,
+        expression: text,
+        tokens: '',
+        text: text
+      };
+      if (child) {
+        children.push(child);
+      }
+    }
+  }
+
+  function closeElement (element) {
+    if (currentParent && !element.forbidden) {
+      currentParent.children.push(element);
+      element.parent = currentParent;
+    }
+    // element.children = element.children.filter(function (c) { return !(c).slotScope; });
+  }
+
+  function makeAttrsMap (attrs) {
+    var map = {};
+    for (var i = 0, l = attrs.length; i < l; i++) {
+      if (
+        map[attrs[i].name] && !isIE && !isEdge
+      ) {
+        // warn$1('duplicate attribute: ' + attrs[i].name, attrs[i]);
+      }
+      map[attrs[i].name] = attrs[i].value;
+    }
+    return map
+  }
+
+  function createASTElement (
+    tag,
+    attrs,
+    parent
+  ) {
+    return {
+      type: 1,
+      tag: tag,
+      attrsList: attrs,
+      attrsMap: makeAttrsMap(attrs),
+      rawAttrsMap: {},
+      parent: parent,
+      children: []
+    }
+  }
+
+  function getAndRemoveAttrByRegex (
+    el,
+    name
+  ) {
+    var list = el.attrsList;
+    for (var i = 0, l = list.length; i < l; i++) {
+      var attr = list[i];
+      if (name.test(attr.name)) {
+        list.splice(i, 1);
+        return attr
+      }
+    }
+  }
+  // 删除attrsList，或者attrsMap的属性，根据name找到value
+  function getAndRemoveAttr (
+    el,
+    name,
+    removeFromMap
+  ) {
+    var val;
+    if ((val = el.attrsMap[name]) != null) {
+      var list = el.attrsList;
+      for (var i = 0, l = list.length; i < l; i++) {
+        if (list[i].name === name) {
+          list.splice(i, 1);
+          break
+        }
+      }
+    }
+    if (removeFromMap) {
+      delete el.attrsMap[name];
+    }
+    return val
+  }
+
+  function processFor (el) {
+    var exp;
+    if ((exp = getAndRemoveAttr(el, 'v-for'))) {
+      var res = parseFor(exp);
+      console.log(res)
+      if (res) {
+        extend(el, res);
+      } else {
+        // warn$1(
+        //   ("Invalid v-for expression: " + exp),
+        //   el.rawAttrsMap['v-for']
+        // );
+      }
+    }
+  }
+  var stripParensRE = /^\(|\)$/g;
+  var forAliasRE = /([\s\S]*?)\s+(?:in|of)\s+([\s\S]*)/;
+  var forIteratorRE = /,([^,\}\]]*)(?:,([^,\}\]]*))?$/;
+
+  function parseFor (exp) {
+    var inMatch = exp.match(forAliasRE);
+    if (!inMatch) { return }
+    var res = {};
+    res.for = inMatch[2].trim();
+    var alias = inMatch[1].trim().replace(stripParensRE, '');
+    var iteratorMatch = alias.match(forIteratorRE);
+    if (iteratorMatch) {
+      res.alias = alias.replace(forIteratorRE, '').trim();
+      res.iterator1 = iteratorMatch[1].trim();
+      if (iteratorMatch[2]) {
+        res.iterator2 = iteratorMatch[2].trim();
+      }
+    } else {
+      res.alias = alias;
+    }
+    return res
+  }
+
+  function extend (to, _from) {
+    for (var key in _from) {
+      to[key] = _from[key];
+    }
+    return to
+  }
+
+  const content = '<div><span>11</span></div>'
+
+  parseHTML(content, {
+    start: start,
+    end: end,
+    chars: chars
+  });
+
+  // console.log(root) // ast
+
+  function generate (
+    ast,
+    options
+  ) {
+    // var state = new CodegenState(options);
+    // fix #11483, Root level <script> tags should not be rendered.
+    var code = ast ? (ast.tag === 'script' ? 'null' : genElement(ast, {})) : '_c("div")';
+    return {
+      render: ("with(this){return " + code + "}"),
+      // staticRenderFns: state.staticRenderFns
+    }
+  }
+
+
+  function genElement (el, state) {
+    if (el.parent) {
+      el.pre = el.pre || el.parent.pre;
+    }
+
+    if (el.staticRoot && !el.staticProcessed) {
+      // return genStatic(el, state)
+    } else if (el.once && !el.onceProcessed) {
+      // return genOnce(el, state)
+    } else if (el.for && !el.forProcessed) {
+      // return genFor(el, state)
+    } else if (el.if && !el.ifProcessed) {
+      // return genIf(el, state)
+    } else if (el.tag === 'template' && !el.slotTarget && !state.pre) {
+      // return genChildren(el, state) || 'void 0'
+    } else if (el.tag === 'slot') {
+      // return genSlot(el, state)
+    } else {
+      // component or element
+      var code;
+      if (el.component) {
+        code = genComponent(el.component, el, state);
+      } else {
+        var data;
+        // if (!el.plain || (el.pre && state.maybeComponent(el))) {
+        //   data = genData$2(el, state);
+        // }
+
+        var children = el.inlineTemplate ? null : genChildren(el, state, true);
+        code = "_c('" + (el.tag) + "'" + (data ? ("," + data) : '') + (children ? ("," + children) : '') + ")";
+      }
+      // module transforms
+      // for (var i = 0; i < state.transforms.length; i++) {
+      //   code = state.transforms[i](el, code);
+      // }
+      return code
+    }
+  }
+
+  function genChildren (
+    el,
+    state,
+    checkSkip,
+    altGenElement,
+    altGenNode
+  ) {
+    var children = el.children;
+    if (children.length) {
+      var gen = altGenNode || genNode;
+      return ("[" + (children.map(function (c) { return gen(c, state); }).join(',')) + "]")
+    }
+  }
+
+  function genNode (node, state) {
+    if (node.type === 1) {
+      return genElement(node, state)
+    } else if (node.type === 3 && node.isComment) {
+      // return genComment(node)
+    } else {
+      return genText(node)
+    }
+  }
+
+  function genText (text) {
+    return ("_v(" + (text.type === 2
+      ? text.expression // no need for () because already wrapped in _s()
+      : JSON.stringify(text.text)) + ")")
+  }
+  console.log(root)
+  let res = generate(root)
+  console.log(res)
+
+</script>
+</body>
+</html>
